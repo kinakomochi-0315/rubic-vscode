@@ -1,6 +1,8 @@
 // vscode-nls should be configured before loading all other modules
 import * as nls from "vscode-nls";
-const localize = nls.config(process.env.VSCODE_NLS_CONFIG)(__filename);
+const localize = nls.config(Object.assign({
+    messageFormat: nls.MessageFormat.file
+}, JSON.parse(process.env.VSCODE_NLS_CONFIG || "{}")))(__filename);
 
 import { DebugSession, Event, OutputEvent, TerminatedEvent } from "vscode-debugadapter";
 import { DebugProtocol } from "vscode-debugprotocol";

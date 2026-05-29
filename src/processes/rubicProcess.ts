@@ -130,25 +130,25 @@ export interface RubicDebugHook {
  */
 export class RubicProcess {
     /** Whether this process is extension-host side */
-    readonly isHost: boolean;
+    get isHost(): boolean { throw new Error("isHost is not available in base process"); }
 
     /** Whether this process is debug-adapter side */
-    readonly isDebug: boolean;
+    get isDebug(): boolean { throw new Error("isDebug is not available in base process"); }
 
     /** Workspace root path */
-    readonly workspaceRoot: string;
+    get workspaceRoot(): string { throw new Error("workspaceRoot is not available in base process"); }
 
     /** Extension root path */
-    readonly extensionRoot: string;
+    get extensionRoot(): string { throw new Error("extensionRoot is not available in base process"); }
 
     /** Sketch instance */
-    readonly sketch: SketchModule.Sketch;
+    get sketch(): SketchModule.Sketch { throw new Error("sketch is not available in base process"); }
 
     /** Catalog data */
-    readonly catalogData: CatalogDataModule.CatalogData;
+    get catalogData(): CatalogDataModule.CatalogData { throw new Error("catalogData is not available in base process"); }
 
     /** Debug configuration (for debug-side only) */
-    readonly debugConfiguration: any;
+    get debugConfiguration(): any { throw new Error("debugConfiguration is not available in base process"); }
 
     /** Version */
     readonly version: string;
@@ -199,7 +199,7 @@ export class RubicProcess {
         }
         return Promise.resolve()
         .then(() => {
-            let value = fs.readFileSync(fullPath, encoding || "utf8");
+            let value = fs.readFileSync(fullPath, <BufferEncoding>(encoding || "utf8"));
             if (json) {
                 value = CJSON.parse(value);
             }

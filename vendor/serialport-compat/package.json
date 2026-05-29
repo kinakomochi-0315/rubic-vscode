@@ -1,0 +1,11 @@
+{
+  "name": "serialport",
+  "version": "7.1.3",
+  "description": "Compatibility adapter for legacy serialport API on modern @serialport packages",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "dependencies": {
+    "@serialport/bindings-cpp": "^13.0.1",
+    "@serialport/stream": "^13.0.0"
+  }
+}

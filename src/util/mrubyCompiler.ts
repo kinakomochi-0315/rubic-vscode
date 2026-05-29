@@ -22,9 +22,41 @@ export class MrubyCompiler implements RubicDebugHook {
     private _watch: boolean;
     
     constructor(context: ExtensionContext) {
+        MrubyCompiler._ensureMrbcBinary();
         this._channel = window.createOutputChannel(CHANNEL_NAME);
         this._watch = true;
         RubicProcess.self.registerDebugHook(this);
+    }
+
+    /**
+     * Ensure that mruby-native can locate a binary for the current platform/arch.
+     * mruby-native 1.2.0-build3 ships only darwin/x64 — on Apple Silicon (arm64)
+     * the lookup path `compiled/darwin/arm64/mrbc` is missing and a synchronous
+     * ENOENT escapes the compile call. The x64 binary works via Rosetta 2, so
+     * point the arm64 path at it.
+     */
+    private static _ensureMrbcBinary(): void {
+        if (process.platform !== "darwin" || process.arch !== "arm64") {
+            return;
+        }
+        try {
+            const mrubyNativeDir = path.dirname(require.resolve("mruby-native"));
+            const archBin = path.join(mrubyNativeDir, "compiled", "darwin", "arm64", "mrbc");
+            try {
+                fs.lstatSync(archBin);
+                return;
+            } catch (_) {
+                // not present — fall through to create
+            }
+            const fallbackBin = path.join(mrubyNativeDir, "compiled", "darwin", "x64", "mrbc");
+            if (!fs.existsSync(fallbackBin)) {
+                return;
+            }
+            fs.mkdirSync(path.dirname(archBin), { recursive: true });
+            fs.symlinkSync(fallbackBin, archBin);
+        } catch (_) {
+            // best-effort: if this fails, the original error will be reported on compile
+        }
     }
 
     /**
@@ -186,6 +218,8 @@ export class MrubyCompiler implements RubicDebugHook {
                 }
             }, (reason) => {
                 if (!first) {
+                    const detail = reason && reason.message ? reason.message : String(reason);
+                    this._report(`> ${detail}\n`);
                     this._report(`> ${localize("abort-compile", "Compilation aborted")}\n\n`, true);
                 }
                 throw reason;

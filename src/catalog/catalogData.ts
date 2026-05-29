@@ -76,7 +76,7 @@ interface CatalogRootOverlay {
     __custom__?: boolean;
 }
 
-const LOCALE: string = JSON.parse(process.env.VSCODE_NLS_CONFIG).locale;
+const LOCALE: string = JSON.parse(process.env.VSCODE_NLS_CONFIG || "{}").locale || "en";
 
 export function toLocalizedString(ls: RubicCatalog.LocalizedString): string {
     if (ls == null) { return <any>ls; }

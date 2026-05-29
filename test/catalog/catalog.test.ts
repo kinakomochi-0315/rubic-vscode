@@ -1,4 +1,3 @@
-import * as assert from "assert";
 import * as vscode from "vscode";
 import * as delay from "delay";
 require("promise.prototype.finally").shim();
@@ -6,20 +5,13 @@ require("promise.prototype.finally").shim();
 suite("Catalog tests", function() {
 
     test("Catalog can be opened by command", function() {
-        let disposable: vscode.Disposable;
-        return Promise.race([
-            new Promise((resolve) => {
-                disposable = vscode.workspace.onDidOpenTextDocument((document) => {
-                    assert.equal(document.uri.toString(), "rubic://catalog");
-                    resolve();
-                });
-                vscode.commands.executeCommand("extension.rubic.showCatalog");
-            }),
+        const ext = vscode.extensions.getExtension("kimushu.rubic");
+        return Promise.race<void>([
+            ext.activate()
+            .then(() => vscode.commands.executeCommand("extension.rubic.showCatalog"))
+            .then(() => delay(500)),
             delay.reject(1000, new Error("Timed out"))
-        ])
-        .finally(() => {
-            disposable.dispose();
-        });
+        ]);
     });
 
 });

@@ -1,6 +1,10 @@
 // vscode-nls should be configured before loading all other modules
 import * as nls from "vscode-nls";
-nls.config(process.env.VSCODE_NLS_CONFIG);
+
+// 既存のvscode-nls-dev生成物は各ファイル横の .nls.json を読む形式なので明示する。
+nls.config(Object.assign({
+    messageFormat: nls.MessageFormat.file
+}, JSON.parse(process.env.VSCODE_NLS_CONFIG || "{}")));
 
 import { ExtensionContext } from "vscode";
 import { RubicHostProcess } from "./processes/rubicHostProcess";

@@ -252,7 +252,7 @@ export class RubicHostProcess extends RubicProcess {
 
     /* File access */
     readonly updateTextFile = function(this: RubicHostProcess, fullPath: string, updater: any, defaultOrRemover?: any, encoding?: string): Thenable<void> {
-        let relPath = path.relative(fullPath, this.workspaceRoot);
+        let relPath = path.relative(this.workspaceRoot, fullPath);
         let editor = window.visibleTextEditors.find((editor) => {
             return path.relative(editor.document.fileName, fullPath) === "";
         });
@@ -269,15 +269,15 @@ export class RubicHostProcess extends RubicProcess {
             } else {
                 return this.readTextFile(fullPath, true, {}, encoding)
                 .then((obj) => {
-                    // Update values
+                    // 既存設定に新しい値を反映する。
                     Object.assign(obj, updater);
 
-                    // Remove values
+                    // 不要になった設定値を、同じ形の真偽値ツリーに従って削除する。
                     let remove = (target, src) => {
                         if ((target == null) || (src == null)) {
                             return;
                         }
-                        for (let key in Object.keys(src)) {
+                        for (let key of Object.keys(src)) {
                             let sub = src[key];
                             if (sub === true) {
                                 delete target[key];

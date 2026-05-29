@@ -20,7 +20,9 @@ suite("Manual activation tests", function() {
     test("Rubic can be activated by command", function() {
         this.timeout(10000);
         const ext = vscode.extensions.getExtension("kimushu.rubic");
-        return vscode.commands.executeCommand("extension.rubic.showCatalog")
+        // 現行VS CodeのexecuteCommandはcontributed command自体での暗黙activateを行わないため、先に明示的に起動する。
+        return ext.activate()
+        .then(() => vscode.commands.executeCommand("extension.rubic.showCatalog"))
         .then(() => {
             assert(ext.isActive);
         });

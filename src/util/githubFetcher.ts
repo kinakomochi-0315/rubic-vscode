@@ -28,7 +28,7 @@ export function readGithubFile(repo: GitHubRepository, filename: string, encodin
         });
     }).then((buf: Buffer) => {
         if (encoding != null) {
-            return buf.toString(encoding);
+            return buf.toString(<BufferEncoding>encoding);
         }
         return buf;
     });

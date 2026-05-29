@@ -1,8 +1,5 @@
 # <a id="en"></a>Rubic
 
-[![AppVeyor](https://ci.appveyor.com/api/projects/status/jxu1mf0d3ke1o0a3?svg=true "AppVeyor for Windows build")](https://ci.appveyor.com/project/kimushu/rubic-vscode)
-[![Travis CI](https://travis-ci.org/kimushu/rubic-vscode.svg?branch=master "Travis CI for Linux/OSX builds")](https://travis-ci.org/kimushu/rubic-vscode)
-
 * [Japanese explanation is here / 日本語の説明はこちら](#ja)
 
 This extension makes it easy to develop embedded-board such as PERIDOT and GR-CITRUS from VSCode.<br>

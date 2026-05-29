@@ -13,13 +13,14 @@ interface ItemElement extends HTMLDivElement {
     };
 }
 
-// Define utility function for sending message to extension
+declare const acquireVsCodeApi: () => { postMessage(message: any): void };
+
+// Webviewから拡張機能ホストへ操作内容を送るための共通入口。
 const sendCommand = (() => {
-    let element = <HTMLAnchorElement>document.getElementById("sendCommand");
-    let defaultCommand = element.href.match(/^command:([\w.]+)\?/)[1];
+    let vscode = acquireVsCodeApi();
+    let defaultCommand = (<any>window).__rubicDefaultCommand;
     return (param: any, command: string = defaultCommand): false => {
-        element.href = `command:${command}?${encodeURI(JSON.stringify(param))}`;
-        element.click();
+        vscode.postMessage({ command, params: param });
         return false;
     };
 })();

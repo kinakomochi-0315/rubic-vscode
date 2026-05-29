@@ -1,6 +1,16 @@
 interface CatalogTemplateRoot {
-    /** Path of extension */
-    extensionPath: string;
+    /** CSP source for the webview */
+    cspSource: string;
+    /** Nonce for scripts allowed by CSP */
+    nonce: string;
+    /** URI of catalog stylesheet */
+    templateStyleUri: string;
+    /** URI of markdown stylesheet */
+    markdownStyleUri: string;
+    /** URI of spinner script */
+    spinScriptUri: string;
+    /** URI of catalog script */
+    catalogScriptUri: string;
     /** Command name for communication */
     commandEntry: string;
     /** Show preview items */

@@ -3,10 +3,13 @@
 
 <head>
   <meta http-equiv="Content-type" content="text/html; charset=UTF-8">
-  <base href="{{extensionPath}}/">
-  <link rel="stylesheet" type="text/css" href="out/src/catalog/template.css" media="all">
-  <link rel="stylesheet" type="text/css" href="out/src/catalog/markdown.css" media="all">
-  <script src="lib/spin.min.js"></script>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src {{cspSource}} https: data:; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
+  <link rel="stylesheet" type="text/css" href="{{templateStyleUri}}" media="all">
+  <link rel="stylesheet" type="text/css" href="{{markdownStyleUri}}" media="all">
+  <script nonce="{{nonce}}" src="{{spinScriptUri}}"></script>
+  <script nonce="{{nonce}}">
+    window.__rubicDefaultCommand = "{{commandEntry}}";
+  </script>
 </head>
 
 <body>
@@ -92,8 +95,7 @@
     </div>
     {{/each}}
   </div>
-  <a id="sendCommand" href="command:{{commandEntry}}?" style="display: none"></a>
-  <script src="out/src/catalog/catalogPage.js"></script>
+  <script nonce="{{nonce}}" src="{{catalogScriptUri}}"></script>
 </body>
 
 </html>

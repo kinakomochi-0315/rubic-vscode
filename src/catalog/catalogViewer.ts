@@ -4,11 +4,11 @@ import * as dedent from "dedent";
 import { Board } from "../boards/board";
 import { CacheStorage } from "../util/cacheStorage";
 import {
-    CancellationToken, Disposable,
-    EventEmitter, ExtensionContext,
+    Disposable,
+    ExtensionContext,
     QuickPickItem,
-    TextDocumentContentProvider, Uri, ViewColumn,
-    commands, window, workspace
+    Uri, ViewColumn, Webview, WebviewPanel,
+    commands, window
 } from "vscode";
 import { CatalogData, toLocalizedString } from "./catalogData";
 import { SketchLoadResult } from "../sketch";
@@ -25,7 +25,6 @@ const localize = nls.loadMessageBundle(__filename);
 export const CMD_SHOW_CATALOG = "extension.rubic.showCatalog";
 export const CMD_SELECT_PORT  = "extension.rubic.selectPort";
 
-const URI_CATALOG = Uri.parse("rubic://catalog");
 const CMD_UPDATE_CATALOG    = "extension.rubic.updateCatalog";
 const CMD_TEST_CONNECTION   = "extension.rubic.testConnection";
 const CMD_WRITE_FIRMWARE    = "extension.rubic.writeFirmware";
@@ -40,22 +39,35 @@ interface CatalogSelection {
     variationPath: string;
 }
 
-export class CatalogViewer implements TextDocumentContentProvider, Disposable {
+interface CatalogWebviewMessage {
+    command: string;
+    params?: any;
+}
+
+const CATALOG_WEBVIEW_COMMANDS = new Set([
+    CMD_SHOW_CATALOG,
+    CMD_SELECT_PORT,
+    CMD_UPDATE_CATALOG,
+    CMD_TEST_CONNECTION,
+    CMD_WRITE_FIRMWARE,
+    CMD_APPLY_TEMPLATE
+]);
+
+export class CatalogViewer implements Disposable {
     private _currentSelection: CatalogSelection;
     private _currentPanel: "board" | "repository" | "release" | "variation" | "details";
     private _pendingSave: boolean;
     private _pendingCache: boolean;
     private _firstFetch: Promise<boolean>;
-    private _onDidChange = new EventEmitter<Uri>();
-    get onDidChange() { return this._onDidChange.event; }
+    private _panel: WebviewPanel;
 
     /**
      * Constructor of CatalogViewer
      */
-    public constructor(context: ExtensionContext) {
+    public constructor(private _context: ExtensionContext) {
         // Register commands
         if (RubicProcess.self.workspaceRoot == null) {
-            context.subscriptions.push(
+            _context.subscriptions.push(
                 commands.registerCommand(CMD_SHOW_CATALOG, () => {
                     return RubicProcess.self.showInformationMessage(localize(
                         "open-folder-before",
@@ -65,7 +77,7 @@ export class CatalogViewer implements TextDocumentContentProvider, Disposable {
             );
             return;
         }
-        context.subscriptions.push(
+        _context.subscriptions.push(
             commands.registerCommand(CMD_SHOW_CATALOG, (params) => {
                 if (params) {
                     this._updateCatalogView(params);
@@ -88,11 +100,6 @@ export class CatalogViewer implements TextDocumentContentProvider, Disposable {
             commands.registerCommand(CMD_APPLY_TEMPLATE, (params) => {
                 this._applyTemplate(params);
             })
-        );
-
-        // Register scheme
-        context.subscriptions.push(
-            workspace.registerTextDocumentContentProvider("rubic", this)
         );
 
         this._firstFetch = RubicProcess.self.catalogData.fetch()
@@ -118,28 +125,6 @@ export class CatalogViewer implements TextDocumentContentProvider, Disposable {
             this._pendingSave = false;
             this._triggerUpdate();
         });
-
-        // Register event handler for closing
-        context.subscriptions.push(
-            workspace.onDidCloseTextDocument((document) => {
-                if (document.uri.scheme === "rubic") {
-                    if (this._pendingSave) {
-                        let items: RubicMessageItem[] = [{
-                            title: localize("open-catalog", "Open catalog")
-                        }];
-                        RubicProcess.self.showWarningMessage(
-                            localize("hw-config-not-saved", "New hardware configuration is not saved!"),
-                            ...items
-                        )
-                        .then((item) => {
-                            if (item === items[0]) {
-                                this._showCatalogView();
-                            }
-                        });
-                    }
-                }
-            })
-        );
     }
 
     /**
@@ -170,16 +155,92 @@ export class CatalogViewer implements TextDocumentContentProvider, Disposable {
         })
         .then((result) => {
             if (result === SketchLoadResult.LOAD_CANCELED) { return; }
-            let active = window.activeTextEditor;
-            return commands.executeCommand("vscode.previewHtml",
-                URI_CATALOG,
-                (active ? active.viewColumn : ViewColumn.One),
-                localize("catalog-title", "Rubic board catalog")
-            );
+            this._showOrRevealPanel();
+            this._triggerUpdate();
         })
         .then(() => {
             if (this._currentPanel === "details") {
                 this._showSaveMessage();
+            }
+        });
+    }
+
+    /**
+     * 最新VS Code向けにカタログ用Webviewを作成または再表示する。
+     */
+    private _showOrRevealPanel(): void {
+        let title = localize("catalog-title", "Rubic board catalog");
+        let active = window.activeTextEditor;
+        let viewColumn = active ? active.viewColumn : ViewColumn.One;
+        if (this._panel != null) {
+            this._panel.reveal(viewColumn);
+            return;
+        }
+        this._panel = window.createWebviewPanel("rubicCatalog", title, viewColumn, {
+            enableScripts: true,
+            localResourceRoots: [this._context.extensionUri]
+        });
+        this._context.subscriptions.push(
+            this._panel.webview.onDidReceiveMessage((message: CatalogWebviewMessage) => {
+                this._executeCatalogCommand(message);
+            }),
+            this._panel.onDidDispose(() => {
+                this._panel = null;
+                this._showUnsavedConfigurationWarning();
+            })
+        );
+    }
+
+    /**
+     * Webviewから届いた操作だけを許可済みRubicコマンドへ変換して実行する。
+     */
+    private _executeCatalogCommand(message: CatalogWebviewMessage): void {
+        if (message == null || message.command == null) {
+            return;
+        }
+
+        let [command, query] = message.command.split("?", 2);
+        if (!CATALOG_WEBVIEW_COMMANDS.has(command)) {
+            console.warn(`Rubic ignored unknown catalog command: ${message.command}`);
+            return;
+        }
+
+        let params = message.params;
+        if (query) {
+            params = Object.assign({}, params, this._parseCommandQuery(query));
+        }
+        commands.executeCommand(command, params);
+    }
+
+    /**
+     * 旧HTMLボタンが持つ query 形式のパラメータをVS Codeコマンド引数へ戻す。
+     */
+    private _parseCommandQuery(query: string): any {
+        let params = {};
+        let searchParams = new URLSearchParams(query);
+        searchParams.forEach((value, key) => {
+            params[key] = value;
+        });
+        return params;
+    }
+
+    /**
+     * 未保存のカタログ選択が残ったまま閉じた場合だけ再表示を促す。
+     */
+    private _showUnsavedConfigurationWarning(): void {
+        if (!this._pendingSave) {
+            return;
+        }
+        let items: RubicMessageItem[] = [{
+            title: localize("open-catalog", "Open catalog")
+        }];
+        RubicProcess.self.showWarningMessage(
+            localize("hw-config-not-saved", "New hardware configuration is not saved!"),
+            ...items
+        )
+        .then((item) => {
+            if (item === items[0]) {
+                this._showCatalogView();
             }
         });
     }
@@ -275,7 +336,21 @@ export class CatalogViewer implements TextDocumentContentProvider, Disposable {
      * Trigger page update
      */
     private _triggerUpdate(): void {
-        this._onDidChange.fire(URI_CATALOG);
+        if (this._panel == null) {
+            return;
+        }
+        let panel = this._panel;
+        this._renderCatalogHtml(panel.webview)
+        .then((html) => {
+            if (this._panel === panel) {
+                panel.webview.html = html;
+            }
+        }, (reason) => {
+            console.error("Rubic failed to render catalog webview:", reason);
+            RubicProcess.self.showErrorMessage(
+                localize("catalog-render-failed", "Failed to render Rubic catalog")
+            );
+        });
     }
 
     /**
@@ -402,16 +477,17 @@ export class CatalogViewer implements TextDocumentContentProvider, Disposable {
     }
 
     /**
-     * Provide HTML for Rubic board catalog
+     * RubicボードカタログのHTMLをWebview向けに組み立てる。
      */
-    provideTextDocumentContent(uri: Uri, token: CancellationToken): Promise<string> {
+    private _renderCatalogHtml(webview: Webview): Promise<string> {
         let { catalogData } = RubicProcess.self;
-        if (uri.scheme !== "rubic" || uri.authority !== "catalog") {
-            return Promise.reject(new Error("invalid URI for Rubic board catalog"));
-        }
-
         let vars: CatalogTemplateRoot = {
-            extensionPath: Uri.file(RubicProcess.self.extensionRoot).toString(),
+            cspSource: webview.cspSource,
+            nonce: this._createNonce(),
+            templateStyleUri: this._asWebviewUri(webview, "out/src/catalog/template.css"),
+            markdownStyleUri: this._asWebviewUri(webview, "out/src/catalog/markdown.css"),
+            spinScriptUri: this._asWebviewUri(webview, "lib/spin.min.js"),
+            catalogScriptUri: this._asWebviewUri(webview, "out/src/catalog/catalogPage.js"),
             commandEntry: CMD_SHOW_CATALOG,
             showPreview: null,
             unofficial: catalogData.custom,
@@ -477,7 +553,7 @@ export class CatalogViewer implements TextDocumentContentProvider, Disposable {
             });
         })
         .then(() => {
-            return this._provideBoardList(vars.panels[0], catalogData);
+            return this._provideBoardList(vars.panels[0], catalogData, webview);
         })
         .then((board) => {
             return this._provideRepositoryList(vars.panels[1], board);
@@ -497,10 +573,41 @@ export class CatalogViewer implements TextDocumentContentProvider, Disposable {
     }
 
     /**
+     * WebviewのCSPで外部スクリプトを許可しないため、描画ごとにnonceを発行する。
+     */
+    private _createNonce(): string {
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        let nonce = "";
+        for (let i = 0; i < 32; ++i) {
+            nonce += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return nonce;
+    }
+
+    /**
+     * 拡張機能内の相対パスをWebviewから読み込めるURIに変換する。
+     */
+    private _asWebviewUri(webview: Webview, relativePath: string): string {
+        return webview.asWebviewUri(
+            Uri.joinPath(this._context.extensionUri, ...relativePath.split("/"))
+        ).toString();
+    }
+
+    /**
+     * カタログ内のローカル画像パスだけをWebview用URIへ変換する。
+     */
+    private _asCatalogImageUri(webview: Webview, icon: string): string {
+        if (icon == null || icon.match(/^(?:https?:|data:|vscode-resource:|vscode-webview-resource:|vscode-webview:)/i)) {
+            return icon;
+        }
+        return this._asWebviewUri(webview, icon);
+    }
+
+    /**
      * Provide board list
      * @param panel Panel variables for handlebars rendering
      */
-    private _provideBoardList(panel: CatalogTemplatePanel, catalogData: CatalogData): Promise<RubicCatalog.Board> {
+    private _provideBoardList(panel: CatalogTemplatePanel, catalogData: CatalogData, webview: Webview): Promise<RubicCatalog.Board> {
         let { sketch } = RubicProcess.self;
         let { boardClass } = this._currentSelection;
         let selectedBoard: RubicCatalog.Board;
@@ -518,7 +625,7 @@ export class CatalogViewer implements TextDocumentContentProvider, Disposable {
                 id: board.class,
                 title: toLocalizedString(board.name),
                 selected: (board.class === boardClass),
-                icon: board.icon,
+                icon: this._asCatalogImageUri(webview, board.icon),
                 preview: board.preview,
                 description: toLocalizedString(board.description),
                 details: toLocalizedString(board.author),

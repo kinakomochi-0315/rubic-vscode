@@ -1,12 +1,11 @@
-import * as SerialPort from "serialport";
+import { SerialPort } from "serialport";
 
 export type NumberJudge = number | ((value: number) => boolean);
 
 export function findBoard(vendorId: NumberJudge, productId: NumberJudge, callback: (err: Error, path?: string) => void): void {
-    SerialPort.list((err, ports) => {
-        if (err) {
-            return callback(err);
-        }
+    // 現行serialportのPromise APIでポート一覧を取得する。
+    SerialPort.list()
+    .then((ports) => {
         let port = ports.find((port) => {
             let vid = parseInt(port.vendorId, 16);
             let pid = parseInt(port.productId, 16);
@@ -30,6 +29,8 @@ export function findBoard(vendorId: NumberJudge, productId: NumberJudge, callbac
         if (!port) {
             return callback(new Error("Board not found"));
         }
-        return callback(undefined, port.comName);
+        return callback(undefined, port.path);
+    }, (err) => {
+        return callback(err);
     });
 }

@@ -22,7 +22,8 @@ suite("launch.json setup test", function() {
         this.timeout(15000);
         vscode.debug.startDebugging(vscode.workspace.workspaceFolders[0], <any>{ type: "rubic" })
         .then((succeeded) => {
-            assert(succeeded);
+            // 初回はlaunch.json作成だけでデバッグ開始は中断される。
+            assert(!succeeded);
             setTimeout(() => {
                 try {
                     let json = CJSON.parse(fs.readFileSync(launchJson, "utf8"));

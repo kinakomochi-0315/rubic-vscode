@@ -1,6 +1,6 @@
 import { Board, BoardCandidate, BoardStdioStream, BoardInformation, BoardConstructor } from "./board";
 import * as stream from "stream";
-import * as SerialPort from "serialport";
+import { SerialPort, PortInfo } from "serialport";
 import * as nls from "vscode-nls";
 import * as fse from "fs-extra";
 import * as pify from "pify";
@@ -34,7 +34,7 @@ export class WakayamaRbBoard extends Board {
     private _stdio: BoardStdioStream;
     private _waiter: {
         resolve: Function, reject: Function,
-        timerId: NodeJS.Timer,
+        timerId: NodeJS.Timeout,
         length?: number, token?: Buffer, string?: boolean,
         offset?: number
     };
@@ -55,8 +55,8 @@ export class WakayamaRbBoard extends Board {
     }
 
     public static list(): Promise<BoardCandidate[]> {
-        return pify(SerialPort.list).call(SerialPort)
-        .then((ports: SerialPort.PortConfig[]) => {
+        return SerialPort.list()
+        .then((ports: PortInfo[]) => {
             let result: BoardCandidate[] = [];
             ports.forEach((port) => {
                 let vid = parseInt(port.vendorId, 16);
@@ -69,8 +69,8 @@ export class WakayamaRbBoard extends Board {
                 });
                 let board: BoardCandidate = {
                     boardClass: this.name,
-                    path: port.comName,
-                    name: port.comName,
+                    path: port.path,
+                    name: port.path,
                     vendorId: vid,
                     productId: pid
                 };
@@ -87,7 +87,9 @@ export class WakayamaRbBoard extends Board {
 
     private _portCall(method: string, ...args): Promise<any> {
         if (this._port == null) {
-            this._port = new SerialPort(this._path, {
+            // serialport v10以降はパスをoptions.pathとして渡す形式に変わった。
+            this._port = new SerialPort({
+                path: this._path,
                 autoOpen: false,
                 baudRate: 115200,
             });
